@@ -21,7 +21,7 @@ use zebedee_rust::{charges::*, ZebedeeClient};
 #[tokio::main]
 async fn main() {
     let apikey: String = env::var("ZBD_API_KEY").unwrap();
-    let zebedee_client = ZebedeeClient::new().apikey(apikey).build();
+    let zebedee_client = ZebedeeClient::new().set_apikey(apikey);
 
     // Create a Bolt 11 Invoice for 5000 msat or 5 sat.
     let charge = Charge {
@@ -46,7 +46,7 @@ use zebedee_rust::{ln_address::{LnPayment, pay_ln_address}, ZebedeeClient};
 #[tokio::main]
 async fn main() {
     let apikey: String = env::var("ZBD_API_KEY").unwrap();
-    let zebedee_client = ZebedeeClient::new().apikey(apikey).build();
+    let zebedee_client = ZebedeeClient::new().set_apikey(apikey);
 
     // Create a Lightning payment
     let payment = LnPayment {
@@ -72,7 +72,7 @@ use zebedee_rust::{internal_transfer::{{InternalTransfer, internal_transfer}}, Z
 #[tokio::main]
 async fn main() {
     let apikey: String = env::var("ZBD_API_KEY").unwrap();
-    let zebedee_client = ZebedeeClient::new().apikey(apikey).build();
+    let zebedee_client = ZebedeeClient::new().set_apikey(apikey);
 
     // Send Internal Transfer
     let internal_transfer_payload = InternalTransfer {

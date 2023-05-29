@@ -59,7 +59,7 @@ pub async fn create_charge(
     charge: Charge,
 ) -> Result<StdResp<Option<ChargesData>>, anyhow::Error> {
     let resp = client
-        .reqw_cli
+        .client
         .post(format!("{}/v0/charges", client.domain))
         .header("Content-Type", "application/json")
         .header("apikey", client.apikey)
@@ -103,7 +103,7 @@ pub async fn get_charges(
     client: ZebedeeClient,
 ) -> Result<StdResp<Option<Vec<ChargesData>>>, anyhow::Error> {
     let resp = client
-        .reqw_cli
+        .client
         .get(format!("{}/v0/charges", client.domain))
         .header("Content-Type", "application/json")
         .header("apikey", client.apikey)
@@ -147,7 +147,7 @@ pub async fn get_charge(
 ) -> Result<StdResp<Option<ChargesData>>, anyhow::Error> {
     let url = format!("{}/v0/charges/{}", client.domain, charge_id);
     let resp = client
-        .reqw_cli
+        .client
         .get(&url)
         .header("Content-Type", "application/json")
         .header("apikey", client.apikey)
@@ -200,7 +200,7 @@ mod tests {
         let apikey: String = env::var("ZBD_API_KEY").unwrap();
         let zbdenv: String =
             env::var("ZBD_ENV").unwrap_or_else(|_| String::from("https://api.zebedee.io"));
-        let zebedee_client = ZebedeeClient::new().domain(zbdenv).apikey(apikey).build();
+        let zebedee_client = ZebedeeClient::new().set_domain(zbdenv).set_apikey(apikey);
         let charge = Charge {
             amount: String::from("1000"),
             ..Default::default()
@@ -214,7 +214,7 @@ mod tests {
         let apikey: String = env::var("ZBD_API_KEY").unwrap();
         let zbdenv: String =
             env::var("ZBD_ENV").unwrap_or_else(|_| String::from("https://api.zebedee.io"));
-        let zebedee_client = ZebedeeClient::new().domain(zbdenv).apikey(apikey).build();
+        let zebedee_client = ZebedeeClient::new().set_domain(zbdenv).set_apikey(apikey);
 
         let r = get_charges(zebedee_client).await.unwrap();
         assert!(r.success);
@@ -224,7 +224,7 @@ mod tests {
         let apikey: String = env::var("ZBD_API_KEY").unwrap();
         let zbdenv: String =
             env::var("ZBD_ENV").unwrap_or_else(|_| String::from("https://api.zebedee.io"));
-        let zebedee_client = ZebedeeClient::new().domain(zbdenv).apikey(apikey).build();
+        let zebedee_client = ZebedeeClient::new().set_domain(zbdenv).set_apikey(apikey);
 
         let charge = Charge {
             amount: String::from("1000"),

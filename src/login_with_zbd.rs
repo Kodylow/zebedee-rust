@@ -143,28 +143,34 @@ pub async fn create_auth_url(
     challenge: String,
 ) -> Result<String, anyhow::Error> {
     let url = format!("{}/v1/oauth2/authorize", client.domain);
-    let auth_url = client
-        .reqw_cli
+
+    let auth_url_builder = client
+        .client
         .get(url)
         .header("Content-Type", "application/json")
-        .query(&[("client_id", client.oauth.client_id)])
-        .query(&[("response_type", "code")])
-        .query(&[("redirect_uri", client.oauth.redirect_uri)])
-        .query(&[("code_challenge_method", "S256")])
-        .query(&[("code_challenge", challenge)])
-        .query(&[("scope", client.oauth.scope)])
-        .query(&[("state", client.oauth.state)])
-        .build()
-        .unwrap()
-        .url()
-        .to_string();
+        .query(&[
+            ("client_id", &client.oauth.client_id),
+            ("response_type", &"code".to_string()),
+            ("redirect_uri", &client.oauth.redirect_uri),
+            ("code_challenge_method", &"S256".to_string()),
+            ("code_challenge", &challenge),
+            ("scope", &client.oauth.scope),
+            ("state", &client.oauth.state),
+        ])
+        .build();
 
-    let valid_url = AuthURL {
-        url: auth_url.clone(),
-    };
-    valid_url.validate()?;
+    match auth_url_builder {
+        Ok(auth_url) => {
+            let valid_url = AuthURL {
+                url: auth_url.url().to_string(),
+            };
 
-    Ok(auth_url)
+            valid_url.validate()?;
+
+            Ok(valid_url.url)
+        }
+        Err(e) => Err(anyhow::anyhow!("Error building auth_url: {}", e)),
+    }
 }
 
 pub async fn fetch_token(
@@ -175,7 +181,7 @@ pub async fn fetch_token(
 
     let url = format!("{}/v1/oauth2/token", client.domain);
     let resp = client
-        .reqw_cli
+        .client
         .post(&url)
         .header("Content-Type", "application/json")
         .json(&payload)
@@ -220,7 +226,7 @@ pub async fn refresh_token(
 
     let url = format!("{}/v1/oauth2/token", client.domain);
     let resp = client
-        .reqw_cli
+        .client
         .post(&url)
         .header("Content-Type", "application/json")
         .json(&payload)
@@ -266,7 +272,7 @@ pub async fn fetch_user_data(
 
     let url = format!("{}/v1/oauth2/user", client.domain);
     let req = client
-        .reqw_cli
+        .client
         .get(&url)
         .header("Content-Type", "application/json")
         .header("usertoken", token)
@@ -312,7 +318,7 @@ pub async fn fetch_user_wallet_data(
 
     let url = format!("{}/v1/oauth2/wallet", client.domain);
     let req = client
-        .reqw_cli
+        .client
         .get(&url)
         .header("Content-Type", "application/json")
         .header("usertoken", token)
@@ -359,17 +365,21 @@ mod tests {
     #[tokio::test]
     async fn test_create_challenge_from_string() {
         let c = PKCE::new_from_string(String::from("hellomynameiswhat"));
-
-        assert_eq!(
-            c.challenge,
-            String::from("mBc-M8x_JG5qARgND5Vzx7fPu1EjZlapL_dVg4BjrkU")
-        );
+        match c {
+            Ok(PKCE { challenge, .. }) => assert_eq!(
+                challenge,
+                String::from("mBc-M8x_JG5qARgND5Vzx7fPu1EjZlapL_dVg4BjrkU")
+            ),
+            Err(e) => panic!("Error: {}", e),
+        }
     }
     #[tokio::test]
     async fn test_create_challenge_rand() {
         let c = PKCE::new_rand();
-
-        assert_eq!(c.challenge, c.challenge);
+        match c {
+            Ok(PKCE { challenge, .. }) => assert_eq!(challenge.len(), 43),
+            Err(e) => panic!("Error: {}", e),
+        }
     }
     #[tokio::test]
     async fn test_create_oauth_auth_url() {
@@ -382,21 +392,24 @@ mod tests {
             env::var("ZBD_ENV").unwrap_or_else(|_| String::from("https://api.zebedee.io"));
 
         let zebedee_client = ZebedeeClient::new()
-            .domain(zbdenv)
-            .apikey(apikey)
+            .set_domain(zbdenv)
+            .set_apikey(apikey)
             .oauth(
                 oauth_client_id,
                 oauth_secret,
                 redirect_uri,
                 state,
                 String::from("user"),
-            )
-            .build();
+            );
 
         let c = PKCE::new_from_string(String::from("hellomynameiswhat"));
-        let r = create_auth_url(zebedee_client, c.challenge.clone());
-
-        assert!(r.await.is_ok());
+        match c {
+            Ok(PKCE { challenge, .. }) => {
+                let r = create_auth_url(zebedee_client, challenge.clone());
+                assert!(r.await.is_ok());
+            }
+            Err(e) => panic!("Error: {}", e),
+        }
     }
     #[tokio::test]
     async fn test_fetch_token() {
@@ -409,27 +422,36 @@ mod tests {
             env::var("ZBD_ENV").unwrap_or_else(|_| String::from("https://api.zebedee.io"));
 
         let zebedee_client = ZebedeeClient::new()
-            .domain(zbdenv)
-            .apikey(apikey)
+            .set_domain(zbdenv)
+            .set_apikey(apikey)
             .oauth(
                 oauth_client_id,
                 oauth_secret,
                 redirect_uri,
                 state,
                 String::from("user"),
-            )
-            .build();
+            );
 
-        let c = PKCE::new_from_string(String::from("hellomynameiswhat"));
         let fake_code = String::from("xxx11xx1-xxxx-xxxx-xxx1-1xx11xx111xx");
-        let fetchbody = FetchTokenBody::new(zebedee_client.clone(), fake_code, c.verifier);
-        let r = fetch_token(zebedee_client, fetchbody);
-        //let mut i = String::from("");
-        let i = match r.await {
-            Err(e) => e.to_string(),
+        let c = PKCE::new_from_string(String::from("hellomynameiswhat"));
 
-            Ok(_) => "it worked but how?".to_string(),
+        let r = match c {
+            Ok(PKCE {
+                challenge,
+                verifier,
+                ..
+            }) => {
+                let fetchbody = FetchTokenBody::new(zebedee_client.clone(), challenge, verifier);
+                fetch_token(zebedee_client, fetchbody).await
+            }
+            Err(e) => panic!("Error: {}", e),
         };
+
+        let i = match r {
+            Ok(_) => "it worked but how?".to_string(),
+            Err(e) => e.to_string(),
+        };
+
         assert!(i.is_ascii());
     }
     #[tokio::test]
@@ -443,16 +465,15 @@ mod tests {
             env::var("ZBD_ENV").unwrap_or_else(|_| String::from("https://api.zebedee.io"));
 
         let zebedee_client = ZebedeeClient::new()
-            .domain(zbdenv)
-            .apikey(apikey)
+            .set_domain(zbdenv)
+            .set_apikey(apikey)
             .oauth(
                 oauth_client_id,
                 oauth_secret,
                 redirect_uri,
                 state,
                 String::from("user"),
-            )
-            .build();
+            );
 
         let fake_refresh_token = String::from("xxx11xx1-xxxx-xxxx-xxx1-1xx11xx111xx");
         let fetchbody = FetchRefresh::new(zebedee_client.clone(), fake_refresh_token);
@@ -475,16 +496,15 @@ mod tests {
             env::var("ZBD_ENV").unwrap_or_else(|_| String::from("https://api.zebedee.io"));
 
         let zebedee_client = ZebedeeClient::new()
-            .domain(zbdenv)
-            .apikey(apikey)
+            .set_domain(zbdenv)
+            .set_apikey(apikey)
             .oauth(
                 oauth_client_id,
                 oauth_secret,
                 redirect_uri,
                 state,
                 String::from("user"),
-            )
-            .build();
+            );
 
         let fake_refresh_token = String::from("eyAAAAyomommagotocollegeAAAxxxXXAAAAasdfasdfsas");
         let r = fetch_user_data(zebedee_client, fake_refresh_token);
@@ -505,16 +525,15 @@ mod tests {
             env::var("ZBD_ENV").unwrap_or_else(|_| String::from("https://api.zebedee.io"));
 
         let zebedee_client = ZebedeeClient::new()
-            .domain(zbdenv)
-            .apikey(apikey)
+            .set_domain(zbdenv)
+            .set_apikey(apikey)
             .oauth(
                 oauth_client_id,
                 oauth_secret,
                 redirect_uri,
                 state,
                 String::from("user,wallet"),
-            )
-            .build();
+            );
 
         let fake_refresh_token = String::from("eyAAAAyomommagotocollegeAAAxxxXXAAAAasdfasdfsas");
         let r = fetch_user_wallet_data(zebedee_client, fake_refresh_token);

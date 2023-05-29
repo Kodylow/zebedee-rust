@@ -17,7 +17,7 @@ use validator::Validate;
 #[derive(Clone, Debug)]
 pub struct ZebedeeClient {
     pub domain: String,
-    pub reqw_cli: reqwest::Client,
+    pub client: reqwest::Client,
     pub apikey: String,
     pub oauth: ZebedeeOauth,
 }
@@ -26,16 +26,25 @@ impl ZebedeeClient {
     pub fn new() -> Self {
         ZebedeeClient::default()
     }
-    pub fn domain(mut self, domain: String) -> Self {
+    pub fn domain(&self) -> &String {
+        &self.domain
+    }
+    pub fn apikey(&self) -> &String {
+        &self.apikey
+    }
+    pub fn client(&self) -> &reqwest::Client {
+        &self.client
+    }
+    pub fn set_domain(mut self, domain: String) -> Self {
         self.domain = domain;
         self
     }
-    pub fn apikey(mut self, apikey: String) -> Self {
+    pub fn set_apikey(mut self, apikey: String) -> Self {
         self.apikey = apikey;
         self
     }
-    pub fn reqw_cli(mut self, reqw_cli: reqwest::Client) -> Self {
-        self.reqw_cli = reqw_cli;
+    pub fn set_client(mut self, client: reqwest::Client) -> Self {
+        self.client = client;
         self
     }
     pub fn oauth(
@@ -47,16 +56,15 @@ impl ZebedeeClient {
         scope: String,
     ) -> Self {
         let oauth = ZebedeeOauth::new(client_id, secret, redirect_uri, state, scope);
-        self.oauth = oauth;
-        self
-    }
-
-    pub fn build(self) -> Self {
-        ZebedeeClient {
-            domain: self.domain,
-            reqw_cli: self.reqw_cli,
-            apikey: self.apikey,
-            oauth: self.oauth,
+        match oauth {
+            Ok(oauth) => {
+                self.oauth = oauth;
+                self
+            }
+            Err(e) => {
+                println!("Error setting oauth: {:?}", e);
+                self
+            }
         }
     }
 }
@@ -81,13 +89,18 @@ impl ZebedeeOauth {
         redirect_uri: String,
         state: String,
         scope: String,
-    ) -> Self {
-        ZebedeeOauth {
+    ) -> Result<Self, validator::ValidationErrors> {
+        let oauth = ZebedeeOauth {
             client_id,
             secret,
             redirect_uri,
             state,
             scope,
+        };
+        let result = oauth.validate();
+        match result {
+            Ok(_) => Ok(oauth),
+            Err(e) => Err(e),
         }
     }
 }
@@ -96,7 +109,7 @@ impl Default for ZebedeeClient {
     fn default() -> Self {
         ZebedeeClient {
             domain: String::from("https://api.zebedee.io"),
-            reqw_cli: reqwest::Client::new(),
+            client: reqwest::Client::new(),
             apikey: String::from("errornotset"),
             oauth: Default::default(),
         }
@@ -112,9 +125,8 @@ pub struct PKCE {
 }
 
 impl PKCE {
-    pub fn new(input: [u8; 32]) -> Self {
+    pub fn new(input: [u8; 32]) -> Result<Self, validator::ValidationErrors> {
         let verifier = base64_url::encode(&input);
-
         let mut hasher_2 = Sha256::new();
         hasher_2.update(verifier.clone());
         let hash_result_2 = hasher_2.finalize();
@@ -124,10 +136,10 @@ impl PKCE {
             verifier,
             challenge,
         };
-        p.validate().unwrap();
-        p
+        p.validate()?;
+        Ok(p)
     }
-    pub fn new_from_string(input: String) -> Self {
+    pub fn new_from_string(input: String) -> Result<Self, validator::ValidationErrors> {
         let mut hasher = Sha256::new();
         hasher.update(input);
         let hash_result: [u8; 32] = hasher
@@ -137,7 +149,7 @@ impl PKCE {
             .expect("hashing went wrong from string");
         Self::new(hash_result)
     }
-    pub fn new_rand() -> Self {
+    pub fn new_rand() -> Result<Self, validator::ValidationErrors> {
         let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
         Self::new(random_bytes)
     }
